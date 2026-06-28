@@ -1,0 +1,8 @@
+# Android SDK path - adjust to your local SDK location
+# For Windows:
+# sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
+# For macOS:
+# sdk.dir=/Users/YourName/Library/Android/sdk
+# For Linux:
+# sdk.dir=/home/YourName/Android/Sdk
+sdk.dir=/opt/android-sdk
