@@ -17,10 +17,13 @@ class DnsInterceptorService : Service() {
     private var tcpProxy: TcpProxyServer? = null
     private var iptablesApplied = false
 
+    // Config from Intent
+    private var targetDomain = "www.koukao.cn"
+    private var redirectIp = "192.168.43.1"
+    private var dnsPort = 5353
+    private var proxyPort = 5808
+
     companion object {
-        const val DNS_PORT = 5353
-        const val PROXY_PORT = 5808
-        const val REDIRECT_HOST = "koukao.cn"
         const val NOTIFICATION_ID = 1001
         const val CHANNEL_ID = "hotspot_redirect_channel"
 
@@ -34,24 +37,28 @@ class DnsInterceptorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Read config from Intent
+        targetDomain = intent?.getStringExtra("domain") ?: "www.koukao.cn"
+        redirectIp = intent?.getStringExtra("ip") ?: "192.168.43.1"
+        dnsPort = intent?.getIntExtra("dnsPort", 5353) ?: 5353
+        proxyPort = intent?.getIntExtra("proxyPort", 5808) ?: 5808
+
         val notification = buildNotification()
         startForeground(NOTIFICATION_ID, notification)
 
         isRunning = true
         MainActivity.updateStatus("运行中")
         MainActivity.log("服务已启动")
+        MainActivity.log("配置: $targetDomain → $redirectIp:$proxyPort")
 
-        // Get the hotspot gateway IP
-        val hotspotIp = getHotspotIp()
+        // 1. Start DNS server with target domain
+        dnsServer = DnsServer(dnsPort, redirectIp, targetDomain).also { it.start() }
 
-        // 1. Start DNS server
-        dnsServer = DnsServer(DNS_PORT, hotspotIp).also { it.start() }
-
-        // 2. Start TCP proxy on port 5808
-        tcpProxy = TcpProxyServer(PROXY_PORT).also { it.start() }
+        // 2. Start TCP proxy on configured port
+        tcpProxy = TcpProxyServer(proxyPort).also { it.start() }
 
         // 3. Apply iptables rules (requires root)
-        applyIptables(hotspotIp)
+        applyIptables(redirectIp)
 
         return START_STICKY
     }
@@ -85,21 +92,20 @@ class DnsInterceptorService : Service() {
             reader.close()
             proc.waitFor()
             if (line != null) {
-                // Extract IP from "192.168.43.1/24 dev wlan0 ..."
                 val parts = line.split(" ")
                 if (parts.isNotEmpty()) {
                     val ipWithMask = parts[0]
                     val slashIdx = ipWithMask.indexOf('/')
                     if (slashIdx > 0) ipWithMask.substring(0, slashIdx) else ipWithMask
                 } else {
-                    "192.168.43.1"
+                    redirectIp
                 }
             } else {
-                "192.168.43.1"
+                redirectIp
             }
         } catch (e: Exception) {
-            MainActivity.log("获取热点 IP 失败: ${e.message}，使用默认 192.168.43.1")
-            "192.168.43.1"
+            MainActivity.log("获取热点 IP 失败: ${e.message}，使用配置的 IP: $redirectIp")
+            redirectIp
         }
     }
 
@@ -111,7 +117,6 @@ class DnsInterceptorService : Service() {
             val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
             val exitCode = proc.waitFor()
 
-            // Read stderr for any error messages
             val errorReader = BufferedReader(InputStreamReader(proc.errorStream))
             var errorLine: String?
             while (errorReader.readLine().also { errorLine = it } != null) {
@@ -150,11 +155,8 @@ class DnsInterceptorService : Service() {
 
     /**
      * Apply iptables rules to redirect hotspot traffic.
-     *
-     * Rules:
-     * 1. Redirect DNS (UDP 53) from hotspot to our DNS server (5353)
-     * 2. Redirect HTTP/HTTPS (TCP 80/443) only when destination is hotspot IP
-     *    (i.e. only traffic for koukao.cn, since DNS resolves it to hotspot IP)
+     * DNS (UDP 53) is always redirected.
+     * HTTP/HTTPS (TCP 80/443) only redirected when destination is redirectIp.
      */
     private fun applyIptables(hotspotIp: String) {
         if (!isRootAvailable()) {
@@ -168,29 +170,20 @@ class DnsInterceptorService : Service() {
 
         MainActivity.log("Root 权限检测通过，正在应用 iptables 规则...")
 
-        // Detect hotspot interface
         val ifaceResult = detectHotspotInterface()
         if (ifaceResult == null) {
             MainActivity.log("未检测到热点接口，尝试使用默认接口")
         }
         val ifaceOption = ifaceResult?.let { "-i $it" } ?: ""
 
-        // Find current iptables location
         val iptablesCmd = findIptables()
 
-        // Only redirect traffic destined for hotspot IP (where koukao.cn resolves to)
         val cmds = listOf(
-            // Create a new chain for our rules
             "$iptablesCmd -t nat -N HOTSPOT_REDIRECT 2>/dev/null",
-            // Flush the chain if it exists
             "$iptablesCmd -t nat -F HOTSPOT_REDIRECT",
-            // DNS redirect (all UDP 53)
-            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p udp --dport 53 -j REDIRECT --to-port $DNS_PORT",
-            // HTTP redirect - only traffic TO hotspot IP (koukao.cn)
-            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 80 -d $hotspotIp -j REDIRECT --to-port $PROXY_PORT",
-            // HTTPS redirect - only traffic TO hotspot IP (koukao.cn)
-            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 443 -d $hotspotIp -j REDIRECT --to-port $PROXY_PORT",
-            // Apply to PREROUTING (captures hotspot client traffic)
+            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p udp --dport 53 -j REDIRECT --to-port $dnsPort",
+            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 80 -d $hotspotIp -j REDIRECT --to-port $proxyPort",
+            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 443 -d $hotspotIp -j REDIRECT --to-port $proxyPort",
             "$iptablesCmd -t nat -A PREROUTING -p udp --dport 53 -j HOTSPOT_REDIRECT",
             "$iptablesCmd -t nat -A PREROUTING -p tcp --dport 80 -j HOTSPOT_REDIRECT",
             "$iptablesCmd -t nat -A PREROUTING -p tcp --dport 443 -j HOTSPOT_REDIRECT"
@@ -208,9 +201,9 @@ class DnsInterceptorService : Service() {
             MainActivity.log("iptables 规则已应用")
             MainActivity.log("----------------------------------------")
             MainActivity.log("热点转发已就绪")
-            MainActivity.log("  www.koukao.cn -> 本机:$PROXY_PORT")
-            MainActivity.log("  DNS 服务器 -> 本机:$DNS_PORT")
-            MainActivity.log("  热点网关 IP: $hotspotIp")
+            MainActivity.log("  $targetDomain -> 本机:$proxyPort")
+            MainActivity.log("  DNS 服务器 -> 本机:$dnsPort")
+            MainActivity.log("  转发 IP: $hotspotIp")
             MainActivity.log("----------------------------------------")
         } else {
             MainActivity.log("部分 iptables 规则应用失败")
@@ -319,7 +312,7 @@ class DnsInterceptorService : Service() {
 
         return builder
             .setContentTitle("热点转发运行中")
-            .setContentText("www.koukao.cn → 本机:$PROXY_PORT")
+            .setContentText("$targetDomain → 本机:$proxyPort")
             .setSmallIcon(android.R.drawable.ic_menu_share)
             .setOngoing(true)
             .build()

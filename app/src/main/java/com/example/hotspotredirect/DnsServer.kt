@@ -5,14 +5,21 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 
 /**
- * Simple DNS server that resolves www.koukao.cn to the given redirect IP.
+ * Simple DNS server that resolves a target domain to the given redirect IP.
  * Listens on the specified port (e.g., 5353).
  */
-class DnsServer(private val listenPort: Int, private val redirectIp: String) {
+class DnsServer(
+    private val listenPort: Int,
+    private val redirectIp: String,
+    private val targetDomain: String
+) {
 
     private var running = false
     private var socket: DatagramSocket? = null
     private var thread: Thread? = null
+
+    private val targetLower: String = targetDomain.lowercase().trim('.')
+    private val targetWww: String = if (targetLower.startsWith("www.")) targetLower else "www.$targetLower"
 
     fun start() {
         if (running) return
@@ -81,15 +88,15 @@ class DnsServer(private val listenPort: Int, private val redirectIp: String) {
 
             if (qtype != 1 || qclass != 1) return // Only handle A records in IN class
 
-            // Check if this is www.koukao.cn
-            val targetHost = queryName.lowercase()
-            val respond = targetHost == "www.koukao.cn" || targetHost == "koukao.cn"
+            // Check if this matches the target domain
+            val queryHost = queryName.lowercase()
+            val respond = queryHost == targetLower || queryHost == targetWww
 
             if (respond) {
                 MainActivity.log("DNS 拦截: $queryName -> $redirectIp")
                 // Build DNS response with A record
                 val targetIpBytes = InetAddress.getByName(redirectIp).address
-                val respLen = pos + 4 + 16 // header questions answered + answer section
+                val respLen = pos + 4 + 16
                 val resp = ByteArray(respLen)
 
                 // Copy ID
