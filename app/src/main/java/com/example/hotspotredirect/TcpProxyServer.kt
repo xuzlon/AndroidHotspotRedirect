@@ -28,7 +28,7 @@ class TcpProxyServer(private val listenPort: Int) {
             try {
                 serverSocket = ServerSocket(listenPort)
                 MainActivity.log("TCP 代理已启动，监听端口 $listenPort")
-                MainActivity.log("www.iflytek.com -> 本机:$listenPort 已就绪")
+                MainActivity.log("www.koukao.cn -> 本机:$listenPort 已就绪")
                 while (running) {
                     try {
                         val client = serverSocket?.accept() ?: break
@@ -88,7 +88,7 @@ class TcpProxyServer(private val listenPort: Int) {
                         append("<html><body>")
                         append("<h1>热点转发代理</h1>")
                         append("<p>请求已转发到本机 5808 端口</p>")
-                        append("<p><small>目标: www.iflytek.com -> 本机</small></p>")
+                        append("<p><small>目标: www.koukao.cn -> 本机</small></p>")
                         append("</body></html>")
                     }
                     output.write(response.toByteArray())

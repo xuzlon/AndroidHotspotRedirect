@@ -20,7 +20,7 @@ class DnsInterceptorService : Service() {
     companion object {
         const val DNS_PORT = 5353
         const val PROXY_PORT = 5808
-        const val REDIRECT_HOST = "iflytek.com"
+        const val REDIRECT_HOST = "koukao.cn"
         const val NOTIFICATION_ID = 1001
         const val CHANNEL_ID = "hotspot_redirect_channel"
 
@@ -208,7 +208,7 @@ class DnsInterceptorService : Service() {
             MainActivity.log("iptables 规则已应用")
             MainActivity.log("----------------------------------------")
             MainActivity.log("热点转发已就绪")
-            MainActivity.log("  www.iflytek.com -> 本机:$PROXY_PORT")
+            MainActivity.log("  www.koukao.cn -> 本机:$PROXY_PORT")
             MainActivity.log("  DNS 服务器 -> 本机:$DNS_PORT")
             MainActivity.log("  热点网关 IP: $hotspotIp")
             MainActivity.log("----------------------------------------")
@@ -319,7 +319,7 @@ class DnsInterceptorService : Service() {
 
         return builder
             .setContentTitle("热点转发运行中")
-            .setContentText("www.iflytek.com → 本机:$PROXY_PORT")
+            .setContentText("www.koukao.cn → 本机:$PROXY_PORT")
             .setSmallIcon(android.R.drawable.ic_menu_share)
             .setOngoing(true)
             .build()

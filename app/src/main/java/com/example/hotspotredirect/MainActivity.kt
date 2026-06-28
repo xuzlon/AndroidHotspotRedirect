@@ -20,10 +20,14 @@ class MainActivity : AppCompatActivity() {
         private var logLines = mutableListOf<String>()
 
         fun log(msg: String) {
-            logLines.add(msg)
-            if (logLines.size > 500) logLines.removeAt(0)
+            synchronized(logLines) {
+                logLines.add(msg)
+                if (logLines.size > 500) logLines.removeAt(0)
+            }
             instance?.runOnUiThread {
-                instance?.logText?.text = logLines.joinToString("\n")
+                synchronized(logLines) {
+                    instance?.logText?.text = logLines.joinToString("\n")
+                }
             }
         }
 

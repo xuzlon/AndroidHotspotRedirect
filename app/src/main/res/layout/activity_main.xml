@@ -18,7 +18,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="www.iflytek.com → 本机 5808 端口"
+        android:text="www.koukao.cn → 本机 5808 端口"
         android:textSize="14sp"
         android:textColor="#666666"
         android:layout_marginBottom="32dp" />

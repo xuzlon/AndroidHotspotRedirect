@@ -5,7 +5,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 
 /**
- * Simple DNS server that resolves www.iflytek.com to the given redirect IP.
+ * Simple DNS server that resolves www.koukao.cn to the given redirect IP.
  * Listens on the specified port (e.g., 5353).
  */
 class DnsServer(private val listenPort: Int, private val redirectIp: String) {
@@ -81,9 +81,9 @@ class DnsServer(private val listenPort: Int, private val redirectIp: String) {
 
             if (qtype != 1 || qclass != 1) return // Only handle A records in IN class
 
-            // Check if this is www.iflytek.com
+            // Check if this is www.koukao.cn
             val targetHost = queryName.lowercase()
-            val respond = targetHost == "www.iflytek.com" || targetHost == "iflytek.com"
+            val respond = targetHost == "www.koukao.cn" || targetHost == "koukao.cn"
 
             if (respond) {
                 MainActivity.log("DNS 拦截: $queryName -> $redirectIp")
