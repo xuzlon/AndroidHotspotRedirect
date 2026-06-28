@@ -153,8 +153,8 @@ class DnsInterceptorService : Service() {
      *
      * Rules:
      * 1. Redirect DNS (UDP 53) from hotspot to our DNS server (5353)
-     * 2. Redirect HTTP (TCP 80) to our proxy (5808)
-     * 3. Redirect HTTPS (TCP 443) to our proxy (5808)
+     * 2. Redirect HTTP/HTTPS (TCP 80/443) only when destination is hotspot IP
+     *    (i.e. only traffic for koukao.cn, since DNS resolves it to hotspot IP)
      */
     private fun applyIptables(hotspotIp: String) {
         if (!isRootAvailable()) {
@@ -178,18 +178,18 @@ class DnsInterceptorService : Service() {
         // Find current iptables location
         val iptablesCmd = findIptables()
 
-        // 1. DNS redirect: UDP/53 -> UDP/5353
+        // Only redirect traffic destined for hotspot IP (where koukao.cn resolves to)
         val cmds = listOf(
             // Create a new chain for our rules
             "$iptablesCmd -t nat -N HOTSPOT_REDIRECT 2>/dev/null",
             // Flush the chain if it exists
             "$iptablesCmd -t nat -F HOTSPOT_REDIRECT",
-            // DNS redirect
+            // DNS redirect (all UDP 53)
             "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p udp --dport 53 -j REDIRECT --to-port $DNS_PORT",
-            // HTTP redirect
-            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 80 -j REDIRECT --to-port $PROXY_PORT",
-            // HTTPS redirect
-            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 443 -j REDIRECT --to-port $PROXY_PORT",
+            // HTTP redirect - only traffic TO hotspot IP (koukao.cn)
+            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 80 -d $hotspotIp -j REDIRECT --to-port $PROXY_PORT",
+            // HTTPS redirect - only traffic TO hotspot IP (koukao.cn)
+            "$iptablesCmd -t nat -A HOTSPOT_REDIRECT -p tcp --dport 443 -d $hotspotIp -j REDIRECT --to-port $PROXY_PORT",
             // Apply to PREROUTING (captures hotspot client traffic)
             "$iptablesCmd -t nat -A PREROUTING -p udp --dport 53 -j HOTSPOT_REDIRECT",
             "$iptablesCmd -t nat -A PREROUTING -p tcp --dport 80 -j HOTSPOT_REDIRECT",
